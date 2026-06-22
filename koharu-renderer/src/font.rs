@@ -96,6 +96,42 @@ impl FontBook {
         self.database.faces().cloned().collect()
     }
 
+    /// Scan a directory for `.ttf` / `.otf` / `.ttc` font files and
+    /// register them with the underlying database. Used to surface
+    /// bundled fonts (e.g. Noto Sans Thai) that the user's OS doesn't
+    /// ship with. Returns the number of files registered.
+    ///
+    /// Missing directories are not an error — we just return 0 so the
+    /// caller can blindly invoke this on every startup.
+    pub fn register_fonts_from_dir(&mut self, dir: &std::path::Path) -> usize {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return 0;
+        };
+        let mut count = 0usize;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let ext = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_ascii_lowercase());
+            match ext.as_deref() {
+                Some("ttf") | Some("otf") | Some("ttc") => {}
+                _ => continue,
+            }
+            match self.database.load_font_file(&path) {
+                Ok(_) => {
+                    count += 1;
+                    tracing::info!(
+                        ?path,
+                        "registered bundled font"
+                    );
+                }
+                Err(err) => tracing::warn!(?path, ?err, "skipping font file"),
+            }
+        }
+        count
+    }
+
     /// Loads a font by PostScript name.
     pub fn query(&mut self, post_script_name: &str) -> anyhow::Result<Font> {
         let Some(id) = self

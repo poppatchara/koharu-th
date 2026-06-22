@@ -95,7 +95,17 @@ impl App {
         let backend = shared_llama_backend(&runtime)?;
         let llm = Arc::new(llm::Model::new((*runtime).clone(), cpu, backend));
         let ai = Arc::new(AiManager::new(&runtime));
-        let renderer = Arc::new(renderer::Renderer::new()?);
+
+        // Make sure the bundled-fonts directory exists so the user can drop
+        // .ttf / .otf files in (e.g. Noto Sans Thai) without manually
+        // creating the path. The first-run mkdir is non-fatal.
+        let fonts_dir = koharu_runtime::default_app_data_root().join("fonts");
+        if let Err(err) = std::fs::create_dir_all(&fonts_dir) {
+            tracing::warn!(?err, dir = %fonts_dir, "could not create bundled-fonts dir");
+        }
+        let renderer = Arc::new(renderer::Renderer::new_with_extra_font_dirs(&[
+            std::path::PathBuf::from(fonts_dir.as_str()),
+        ])?);
         Ok(Self {
             config: Arc::new(ArcSwap::from_pointee(config)),
             runtime,
